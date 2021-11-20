@@ -38,7 +38,7 @@ int mode=MODE_DISPLAY;
 //the field of view of the camera
 #define fov 60.0
 #define PI 3.14159265
-#define FOV_RADIANS (fov*PI)/180
+#define FOV_RADIANS fov / 2 * PI / 180
 
 unsigned char buffer[HEIGHT][WIDTH][3];
 
@@ -85,6 +85,7 @@ void plot_pixel_jpeg(int x,int y,unsigned char r,unsigned char g,unsigned char b
 void plot_pixel(int x,int y,unsigned char r,unsigned char g,unsigned char b);
 
 Sphere current_sphere;
+Triangle current_triangle;
 
 float aspect_ratio = WIDTH/HEIGHT;
 float ray_origin[3] = {0, 0, 0};
@@ -99,6 +100,9 @@ bool does_intersect = false;
 float normal_vector[3] = {0, 0, 0};
 
 float current_color_at_point[3] = {0, 0, 0};
+
+typedef enum { SPHERE, TRIANGLE } OBJECT;
+OBJECT object_type;
 
 float min_val(float a, float b) {
   return a < b ? a : b;
@@ -117,12 +121,12 @@ float ray_sphere_intersection(int x, int y, Sphere sphere) {
   printf("\npixel(%i, %i)\n", x, y);
 
   // calculate the length of each pixel using the WIDTH and HEIGHT of the window
-  float x_pixel_length = (aspect_ratio * tan(FOV_RADIANS/2) - (-aspect_ratio * tan(FOV_RADIANS/2))) / WIDTH;
-  float y_pixel_length = (tan(FOV_RADIANS/2) - (-tan(FOV_RADIANS/2))) / HEIGHT;
+  float x_pixel_length = (aspect_ratio * tan(FOV_RADIANS) - (-aspect_ratio * tan(FOV_RADIANS))) / WIDTH;
+  float y_pixel_length = (tan(FOV_RADIANS) - (-tan(FOV_RADIANS))) / HEIGHT;
 
   // calculate direction vector 
-  x_dir = (-aspect_ratio * tan(FOV_RADIANS/2)) + ((x + 0.5) * x_pixel_length);
-  y_dir = tan(FOV_RADIANS/2) - ((y + 0.5) * y_pixel_length);
+  x_dir = (-aspect_ratio * tan(FOV_RADIANS)) + ((x + 0.5) * x_pixel_length);
+  y_dir = tan(FOV_RADIANS) - ((y - 0.5) * y_pixel_length);
   z_dir = -1;
 
   // normalize the direction
@@ -149,9 +153,88 @@ float ray_sphere_intersection(int x, int y, Sphere sphere) {
   } else {
     does_intersect = true;
     float t0 = (-b - sqrt(discriminant)) / (2 * a); // nearest intersection point
-    //float t1 = (-b + sqrt(discriminant)) / (2 * a);
     printf("t0: %f\n", t0);
     return t0;
+  }
+}
+
+/**
+ * Helper function to calculate the normal vector of a plane
+ * given 3 vertices on the plane
+ **/
+float *plane_normal(Vertex v1, Vertex v2, Vertex v3) {
+  float normal[3];
+  float ray1[3];
+  float ray2[3];
+
+  // v1 - v2
+  ray1[0] = v1.position[0] - v2.position[0];
+  ray1[1] = v1.position[1] - v2.position[1];
+  ray1[2] = v1.position[2] - v2.position[2];
+
+  // v3 - v2
+  ray2[0] = v3.position[0] - v2.position[0];
+  ray2[1] = v3.position[1] - v2.position[1];
+  ray2[2] = v3.position[2] - v2.position[2];
+
+  // cross product = (v1 - v2) x (v3 - v2)
+  normal[0] = (ray1[1] * ray2[2]) - (ray1[2] * ray2[1]);
+  normal[1] = (ray1[2] * ray2[0]) - (ray1[0] * ray2[2]);
+  normal[2] = (ray1[0] * ray2[1]) - (ray1[1] * ray2[0]);
+
+  float mag = magnitide(normal[0], normal[1], normal[2]);
+  normal[0] = normal[0]/mag;
+  normal[1] = normal[1]/mag;
+  normal[2] = normal[2]/mag;
+
+  printf("Plane Normal: (%f, %f, %f)", normal[0], normal[1], normal[2]);
+
+  return normal;
+}
+
+float ray_plane_intersection(int x, int y, Triangle triangle) {
+  // calculate the length of each pixel using the WIDTH and HEIGHT of the window
+  float x_pixel_length = (aspect_ratio * tan(FOV_RADIANS) - (-aspect_ratio * tan(FOV_RADIANS))) / WIDTH;
+  float y_pixel_length = (tan(FOV_RADIANS) - (-tan(FOV_RADIANS))) / HEIGHT;
+
+  // calculate direction vector 
+  x_dir = (-aspect_ratio * tan(FOV_RADIANS)) + ((x + 0.5) * x_pixel_length);
+  y_dir = tan(FOV_RADIANS) - ((y - 0.5) * y_pixel_length);
+  z_dir = -1;
+
+  // normalize the direction
+  float mag = magnitide(x_dir, y_dir, z_dir);
+  x_dir = x_dir/mag;
+  y_dir = y_dir/mag;
+  z_dir = z_dir/mag;
+
+  float *normal = plane_normal(triangle.v[0], triangle.v[1], triangle.v[2]);
+  float normal_of_plane[3];
+  for (int i = 0; i < 3; i++) {
+    normal_of_plane[i] = *(normal + i);
+  }
+
+  float numerator = 0;
+  float denominator = 0;
+  double point_on_plane[3] = {triangle.v[0].position[0], triangle.v[0].position[1], triangle.v[0].position[2]};
+  numerator = (point_on_plane[0] * normal_of_plane[0]) + (point_on_plane[1] * normal_of_plane[1]) + (point_on_plane[2] * normal_of_plane[2]);
+  denominator = (x_dir * normal_of_plane[0]) + (y_dir * normal_of_plane[1]) + (z_dir * normal_of_plane[2]);
+  printf("numerator: %f    denominator: %f\n", numerator, denominator);
+
+  if (denominator == 0) {
+    // line and plane do not intersect
+    printf("Triangle intersection: Denominator == 0\n");
+    return -1;
+  } else {
+    // return the intersection point
+    printf("Triangle intersection value: %f\n", numerator / denominator);
+    float t = numerator / denominator;
+    if (t <= 0) {
+      return -1;
+    } else {
+      does_intersect = true;
+      return t;
+    }
   }
 }
 
@@ -160,6 +243,26 @@ float get_intersect_coordinates(float min_root) {
   current_intersection_point[1] = ray_origin[1] + (min_root * y_dir);
   current_intersection_point[2] = ray_origin[2] + (min_root * z_dir);
   printf("current intersection point: (%f, %f, %f)\n", current_intersection_point[0], current_intersection_point[1], current_intersection_point[2]);
+}
+
+/**
+ * Compute the area of a triangle in 3D
+ * using cross product
+ **/
+float triangle_area(float v1[3], float v2[3], float v3[3]) {
+
+}
+
+/**
+ * Use the current intersection point and the current triangle
+ * and barycentric coordinates to determine if point is inside
+ * the triangle 
+ **/
+bool is_intersection_inside_triangle(Triangle triangle) {
+  float alpha = 0;
+  float beta = 0;
+  float gamma = 0;
+
 }
 
 float distance_to_cop(float x, float y, float z) {
@@ -192,15 +295,31 @@ void iterate_over_objects(int x, int y) {
           closest_intersection[0] = current_intersection_point[0];
           closest_intersection[1] = current_intersection_point[1];
           closest_intersection[2] = current_intersection_point[2];
+          object_type = SPHERE;
         }
       }
     }
   }
 
   if (num_triangles != 0) {
-    Triangle current_triangle;
     for(int i = 0; i < num_triangles; i++) {
       current_triangle = triangles[i];
+      float intersection = ray_plane_intersection(x, y, current_triangle);
+
+      if (intersection != -1) {
+        get_intersect_coordinates(intersection);
+
+        // continue updating closest intersection point
+        float dis = distance_to_cop(current_intersection_point[0], current_intersection_point[1], current_intersection_point[2]);
+        printf("distance to current point: %f , vs. closest distance: %f\n", dis, closest_distance);
+        if (dis < closest_distance) {
+          closest_distance = dis;
+          closest_intersection[0] = current_intersection_point[0];
+          closest_intersection[1] = current_intersection_point[1];
+          closest_intersection[2] = current_intersection_point[2];
+          object_type = TRIANGLE;
+        }
+      }
     }
   }
 
@@ -229,9 +348,9 @@ bool shadow_ray_sphere_intersection(Sphere sphere, float shadow_ray[]) {
   float dir_z = shadow_ray[2];
 
   // origin point of the shadow ray is the current intersection point on the sphere
-  float origin_x = current_intersection_point[0];
-  float origin_y = current_intersection_point[1];
-  float origin_z = current_intersection_point[2];
+  float origin_x = closest_intersection[0];
+  float origin_y = closest_intersection[1];
+  float origin_z = closest_intersection[2];
 
   // normalize the direction
   float mag = magnitide(dir_x, dir_y, dir_z);
@@ -256,6 +375,14 @@ bool shadow_ray_sphere_intersection(Sphere sphere, float shadow_ray[]) {
   return discriminant < 0 ? true : false;
 }
 
+bool sphere_equality(Sphere s1, Sphere s2) {
+  return s1.position[0] == s2.position[0] && s1.position[1] == s2.position[1] && s1.position[2] == s2.position[2]
+      && s1.radius == s2.radius
+      && s1.shininess == s2.shininess
+      && s1.color_diffuse[0] == s2.color_diffuse[0] && s1.color_diffuse[1] == s2.color_diffuse[1] && s1.color_diffuse[2] == s2.color_diffuse[2]
+      && s1.color_specular[0] == s2.color_specular[0] && s1.color_specular[1] == s2.color_specular[1] && s1.color_specular[2] == s2.color_specular[2];
+}
+
 /**
  * Given a shadow ray, do ray-sphere and ray-plane intersection
  * for all the objects in the scene
@@ -268,9 +395,15 @@ bool shadow_ray_intersection(float shadow_ray[]) {
   if (num_spheres != 0) {
     for(int i = 0; i < num_spheres; i++) {
       Sphere s = spheres[i];
-      isInShadow = shadow_ray_sphere_intersection(s, shadow_ray);
-      if (isInShadow) {
-        return true;
+
+      // do not intersect the shadow ray with the current sphere you are on
+      // or else you will get all the sphere is in shadow
+      printf("Sphere equality: %d\n", sphere_equality(s, current_sphere));
+      if (!(sphere_equality(s, current_sphere))) {
+        isInShadow = shadow_ray_sphere_intersection(s, shadow_ray);
+        if (isInShadow) {
+          return true;
+        }
       }
     }
   }
@@ -283,24 +416,17 @@ bool shadow_ray_intersection(float shadow_ray[]) {
   return false;
 }
 
-
 /**
  * Shadow_ray: unit vector to light
  * normal_vector: surface normal
  * q: the distance to light source (shadow ray's magnitude)
  **/
-void phong_illumination(float shadow_ray[], float q_distance_to_light_source, Light current_light) {
-  float diffuse;
-  float specular;
-  float k_diffuse = 0.5;
-  float k_specular = 0.75;
-  float shininess = 2.0;
-
+void phong_illumination(float shadow_ray[], Light current_light) {
   // unit vector to camera
   float v_to_camera[3] = {0, 0, 0};
-  v_to_camera[0] = 0 - current_intersection_point[0];
-  v_to_camera[1] = 0 - current_intersection_point[1];
-  v_to_camera[2] = 0 - current_intersection_point[2];
+  v_to_camera[0] = 0 - closest_intersection[0];
+  v_to_camera[1] = 0 - closest_intersection[1];
+  v_to_camera[2] = 0 - closest_intersection[2];
 
   float mag = magnitide(v_to_camera[0], v_to_camera[1], v_to_camera[2]);
   v_to_camera[0] = v_to_camera[0]/mag;
@@ -314,11 +440,14 @@ void phong_illumination(float shadow_ray[], float q_distance_to_light_source, Li
   if (light_dot_normal < 0) {
     light_dot_normal = 0;
   }
-  float illumination_diffuse = k_diffuse * light_dot_normal;
+  float illumination_diffuse_r = current_sphere.color_diffuse[0] * light_dot_normal;
+  float illumination_diffuse_g = current_sphere.color_diffuse[1] * light_dot_normal;
+  float illumination_diffuse_b = current_sphere.color_diffuse[2] * light_dot_normal;
 
-  reflected_vector[0] = (2 * light_dot_normal + normal_vector[0]) - shadow_ray[0];
-  reflected_vector[1] = (2 * light_dot_normal + normal_vector[1]) - shadow_ray[1];
-  reflected_vector[2] = (2 * light_dot_normal + normal_vector[2]) - shadow_ray[2];
+
+  reflected_vector[0] = (2 * light_dot_normal * normal_vector[0]) - shadow_ray[0];
+  reflected_vector[1] = (2 * light_dot_normal * normal_vector[1]) - shadow_ray[1];
+  reflected_vector[2] = (2 * light_dot_normal * normal_vector[2]) - shadow_ray[2];
   printf("REFLECTED VECTOR: (%f, %f, %f)\n", reflected_vector[0], reflected_vector[1], reflected_vector[2]);
   printf("REFLECTED VECTOR MAGNITUDE: %f\n", magnitide(reflected_vector[0], reflected_vector[1], reflected_vector[2]));
 
@@ -327,12 +456,15 @@ void phong_illumination(float shadow_ray[], float q_distance_to_light_source, Li
   if (reflected_dot_viewer < 0) {
     reflected_dot_viewer = 0;
   }
-  float illumination_specular = k_specular * pow(reflected_dot_viewer, shininess);
+  float illumination_specular_r = current_sphere.color_specular[0] * pow(reflected_dot_viewer, current_sphere.shininess);
+  float illumination_specular_g = current_sphere.color_specular[1] * pow(reflected_dot_viewer, current_sphere.shininess);
+  float illumination_specular_b = current_sphere.color_specular[2] * pow(reflected_dot_viewer, current_sphere.shininess);
+
 
   // Add to the RGB color channels separately
-  current_color_at_point[0] += current_light.color[0] * (illumination_diffuse + illumination_specular);
-  current_color_at_point[1] += current_light.color[1] * (illumination_diffuse + illumination_specular);
-  current_color_at_point[2] += current_light.color[2] * (illumination_diffuse + illumination_specular);
+  current_color_at_point[0] += current_light.color[0] * (illumination_diffuse_r + illumination_specular_r);
+  current_color_at_point[1] += current_light.color[1] * (illumination_diffuse_g + illumination_specular_g);
+  current_color_at_point[2] += current_light.color[2] * (illumination_diffuse_b + illumination_specular_b);
 }
 
 /**
@@ -361,14 +493,16 @@ void fire_shadow_rays() {
       shadow_ray[1] = shadow_ray[1]/mag;
       shadow_ray[2] = shadow_ray[2]/mag;
 
-      phong_illumination(shadow_ray, mag, current_light);
+      phong_illumination(shadow_ray, current_light);
     }
-    // The final color of the point is the sum of the contributions from all lights, plus the ambient color
-    current_color_at_point[0] += ambient_light[0];
-    current_color_at_point[1] += ambient_light[1];
-    current_color_at_point[2] += ambient_light[2];
+  }
+  // The final color of the point is the sum of the contributions from all lights, plus the ambient color
+  // only add ambient color once
+  current_color_at_point[0] += ambient_light[0];
+  current_color_at_point[1] += ambient_light[1];
+  current_color_at_point[2] += ambient_light[2];
 
-    // clamp color to 1.0 if necessary
+   // clamp color to 1.0 if necessary
     if (current_color_at_point[0] > 1) {
       current_color_at_point[0] = 1;
     } 
@@ -378,7 +512,8 @@ void fire_shadow_rays() {
     if (current_color_at_point[2] > 1) {
       current_color_at_point[2] = 1;
     } 
-  }
+  // final color after going through all the lights
+  printf("FINAL COLOR: r: %f   g: %f    b: %f\n", current_color_at_point[0], current_color_at_point[1], current_color_at_point[2]);
 }
 
 /**
@@ -399,15 +534,20 @@ void draw_scene()
       iterate_over_objects(x, y);
       if (does_intersect) {
         // 4) for closest intersection point p, calculate surface normal
-        sphere_normal();
+        if (object_type == SPHERE) {
+          sphere_normal();
+          // 5) for each light source, fire a shadow ray
+          fire_shadow_rays();
 
-        // 5) for each light source, fire a shadow ray
-        fire_shadow_rays();
+          // 6) use global color value to color the pixel
+          plot_pixel(x, y, current_color_at_point[0] * 255, current_color_at_point[1] * 255, current_color_at_point[2] * 255);
 
-        // 6) use global color value to color the pixel
-        plot_pixel(x, y, current_color_at_point[0], current_color_at_point[1], current_color_at_point[2]);
+          does_intersect = false;
+        } else {
+          plot_pixel(x, y, 255, 255, 255);
+          does_intersect = false;
+        }
 
-        does_intersect = false;
       }
       // reset the global color variable to all zeros
       // reset the global closest intersection value for the next pixel we will be evaluating
@@ -595,7 +735,7 @@ void init()
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
 
-  glClearColor(255, 255, 255,0);
+  glClearColor(255, 255, 255, 0);
   glClear(GL_COLOR_BUFFER_BIT);
 }
 
