@@ -32,8 +32,8 @@ char *filename=0;
 int mode=MODE_DISPLAY;
 
 //you may want to make these smaller for debugging purposes
-#define WIDTH 640
-#define HEIGHT 480
+#define WIDTH 320
+#define HEIGHT 240
 
 //the field of view of the camera
 #define fov 60.0
@@ -104,6 +104,14 @@ float current_color_at_point[3] = {0, 0, 0};
 float shadow_ray[3] = {0, 0, 0};
 
 float normal_of_plane[3] = {0, 0, 0};
+
+float triangle_intersection_normal[3] = {0, 0, 0};
+float interpolated_diffuse[3] = {0, 0, 0};
+float interpolated_specular[3] = {0, 0, 0};
+
+float current_alpha = 0.0;
+float current_beta = 0.0;
+float current_gamma = 0.0;
 
 typedef enum { SPHERE, TRIANGLE } OBJECT;
 OBJECT object_type;
@@ -333,6 +341,9 @@ bool is_intersection_inside_triangle(Triangle triangle) {
           && alpha >= 0 && alpha <= 1
           && beta >= 0 && beta <= 1
           && gamma >= 0 && gamma <= 1) {
+    current_alpha = alpha;
+    current_beta = beta;
+    current_gamma = gamma;
     return true;
   } else {
     return false;
@@ -623,6 +634,98 @@ void phong_illumination(Light current_light) {
 }
 
 /**
+ * Interpolate the x,y,z coordinates of the normals given
+ * at the triangle vertices, and then normalize the length
+ **/ 
+void normal_at_triangle_intersection() {
+  triangle_intersection_normal[0] = (current_alpha * current_triangle.v[0].normal[0]) + (current_beta * current_triangle.v[1].normal[0] + (current_gamma * current_triangle.v[2].normal[0]));
+  triangle_intersection_normal[1] = (current_alpha * current_triangle.v[0].normal[1]) + (current_beta * current_triangle.v[1].normal[1] + (current_gamma * current_triangle.v[2].normal[1]));
+  triangle_intersection_normal[2] = (current_alpha * current_triangle.v[0].normal[2]) + (current_beta * current_triangle.v[1].normal[2] + (current_gamma * current_triangle.v[2].normal[2]));
+  
+  printf("Normal at triangle intersection: %f, %f, %f\n", triangle_intersection_normal[0], triangle_intersection_normal[1], triangle_intersection_normal[2]); 
+
+  float mag = magnitide(triangle_intersection_normal[0], triangle_intersection_normal[1], triangle_intersection_normal[2]);
+  triangle_intersection_normal[0] = triangle_intersection_normal[0] / mag;
+  triangle_intersection_normal[1] = triangle_intersection_normal[1] / mag;
+  triangle_intersection_normal[2] = triangle_intersection_normal[2] / mag;
+}
+
+void interpolate_diffuse() {
+  interpolated_diffuse[0] = (current_alpha * current_triangle.v[0].color_diffuse[0]) + (current_beta * current_triangle.v[1].color_diffuse[0] + (current_gamma * current_triangle.v[2].color_diffuse[0]));
+  interpolated_diffuse[1] = (current_alpha * current_triangle.v[0].color_diffuse[1]) + (current_beta * current_triangle.v[1].color_diffuse[1] + (current_gamma * current_triangle.v[2].color_diffuse[1]));
+  interpolated_diffuse[2] = (current_alpha * current_triangle.v[0].color_diffuse[2]) + (current_beta * current_triangle.v[1].color_diffuse[2] + (current_gamma * current_triangle.v[2].color_diffuse[2]));
+
+  printf("DIFFUSE at triangle intersection: %f, %f, %f\n", interpolated_diffuse[0], interpolated_diffuse[1], interpolated_diffuse[2]); 
+
+  float mag = magnitide(interpolated_diffuse[0], interpolated_diffuse[1], interpolated_diffuse[2]);
+  interpolated_diffuse[0] = interpolated_diffuse[0] / mag;
+  interpolated_diffuse[1] = interpolated_diffuse[1] / mag;
+  interpolated_diffuse[2] = interpolated_diffuse[2] / mag;
+}
+
+void interpolate_specular() {
+  interpolated_specular[0] = (current_alpha * current_triangle.v[0].color_specular[0]) + (current_beta * current_triangle.v[1].color_specular[0] + (current_gamma * current_triangle.v[2].color_specular[0]));
+  interpolated_specular[1] = (current_alpha * current_triangle.v[0].color_specular[1]) + (current_beta * current_triangle.v[1].color_specular[1] + (current_gamma * current_triangle.v[2].color_specular[1]));
+  interpolated_specular[2] = (current_alpha * current_triangle.v[0].color_specular[2]) + (current_beta * current_triangle.v[1].color_specular[2] + (current_gamma * current_triangle.v[2].color_specular[2]));
+
+  printf("SPECULAR at triangle intersection: %f, %f, %f\n", interpolated_specular[0], interpolated_specular[1], interpolated_specular[2]); 
+
+  float mag = magnitide(interpolated_specular[0], interpolated_specular[1], interpolated_specular[2]);
+  interpolated_specular[0] = interpolated_specular[0] / mag;
+  interpolated_specular[1] = interpolated_specular[1] / mag;
+  interpolated_specular[2] = interpolated_specular[2] / mag;
+}
+
+void phong_illumination_triangle(Light current_light) {
+  // unit vector to camera
+  float v_to_camera[3] = {0, 0, 0};
+  v_to_camera[0] = 0 - closest_intersection[0];
+  v_to_camera[1] = 0 - closest_intersection[1];
+  v_to_camera[2] = 0 - closest_intersection[2];
+
+  float mag = magnitide(v_to_camera[0], v_to_camera[1], v_to_camera[2]);
+  v_to_camera[0] = v_to_camera[0]/mag;
+  v_to_camera[1] = v_to_camera[1]/mag;
+  v_to_camera[2] = v_to_camera[2]/mag;
+
+  float reflected_vector[3] = {0, 0, 0};
+
+  float light_dot_normal = (shadow_ray[0] * triangle_intersection_normal[0]) + (shadow_ray[1] * triangle_intersection_normal[1]) + (shadow_ray[2] * triangle_intersection_normal[2]);
+  // clamp value to zero if necessary
+  if (light_dot_normal < 0) {
+    light_dot_normal = 0;
+  }
+
+  interpolate_diffuse();
+  float illumination_diffuse_r = interpolated_diffuse[0] * light_dot_normal;
+  float illumination_diffuse_g = interpolated_diffuse[1] * light_dot_normal;
+  float illumination_diffuse_b = interpolated_diffuse[2] * light_dot_normal;
+
+  reflected_vector[0] = (2 * light_dot_normal * triangle_intersection_normal[0]) - shadow_ray[0];
+  reflected_vector[1] = (2 * light_dot_normal * triangle_intersection_normal[1]) - shadow_ray[1];
+  reflected_vector[2] = (2 * light_dot_normal * triangle_intersection_normal[2]) - shadow_ray[2];
+  printf("REFLECTED VECTOR: (%f, %f, %f)\n", reflected_vector[0], reflected_vector[1], reflected_vector[2]);
+  printf("REFLECTED VECTOR MAGNITUDE: %f\n", magnitide(reflected_vector[0], reflected_vector[1], reflected_vector[2]));
+
+  float reflected_dot_viewer = (v_to_camera[0] * reflected_vector[0]) + (v_to_camera[1] * reflected_vector[1]) + (v_to_camera[2] * reflected_vector[2]);
+  // clamp value to zero if necessary
+  if (reflected_dot_viewer < 0) {
+    reflected_dot_viewer = 0;
+  }
+
+  interpolate_specular();
+  float illumination_specular_r = interpolated_specular[0] * pow(reflected_dot_viewer, current_sphere.shininess);
+  float illumination_specular_g = interpolated_specular[1] * pow(reflected_dot_viewer, current_sphere.shininess);
+  float illumination_specular_b = interpolated_specular[2] * pow(reflected_dot_viewer, current_sphere.shininess);
+
+  // Add to the RGB color channels separately
+  current_color_at_point[0] += current_light.color[0] * (illumination_diffuse_r + illumination_specular_r);
+  current_color_at_point[1] += current_light.color[1] * (illumination_diffuse_g + illumination_specular_g);
+  current_color_at_point[2] += current_light.color[2] * (illumination_diffuse_b + illumination_specular_b);
+}
+
+
+/**
  * For each light source, fire a shadow ray
  * Determine if light hits the surface
  **/
@@ -648,7 +751,13 @@ void fire_shadow_rays() {
       shadow_ray[1] = shadow_ray[1]/mag;
       shadow_ray[2] = shadow_ray[2]/mag;
 
-      phong_illumination(current_light);
+      if (object_type == SPHERE) {
+        phong_illumination(current_light); 
+      } else {
+        // calculate normal at trianlge intersection point
+        normal_at_triangle_intersection();
+        phong_illumination_triangle(current_light);
+      }
     }
   }
   // The final color of the point is the sum of the contributions from all lights, plus the ambient color
