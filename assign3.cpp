@@ -93,7 +93,7 @@ float x_dir = 0;
 float y_dir = 0;
 float z_dir = 0;
 
-float current_intersection_point[3] = {0, 0, 0};
+double current_intersection_point[3] = {0, 0, 0};
 float closest_intersection[3] = {10000, 10000, 10000};
 bool does_intersect = false;
 
@@ -104,6 +104,8 @@ float current_color_at_point[3] = {0, 0, 0};
 float shadow_ray[3] = {0, 0, 0};
 
 float normal_of_plane[3] = {0, 0, 0};
+
+double triangle_area_cross_product[3] = {0, 0, 0};
 
 float triangle_intersection_normal[3] = {0, 0, 0};
 float interpolated_diffuse[3] = {0, 0, 0};
@@ -129,7 +131,7 @@ float magnitide(float x, float y, float z) {
  *  2. Calculate the values for at^2 + bt + c = 0 
  *  3. Return the intersection point
  **/
-float ray_sphere_intersection(int x, int y, Sphere sphere) {
+float ray_sphere_intersection(int x, int y) {
   printf("\npixel(%i, %i)\n", x, y);
 
   // calculate the length of each pixel using the WIDTH and HEIGHT of the window
@@ -150,11 +152,11 @@ float ray_sphere_intersection(int x, int y, Sphere sphere) {
   printf("xdir: %f    , ydir: %f     , zdir: %f    \n", x_dir, y_dir, z_dir);
 
   float a = (x_dir * x_dir) + (y_dir * y_dir) + (z_dir * z_dir);
-  float b = 2 * ((x_dir * (ray_origin[0] - sphere.position[0])) + (y_dir * (ray_origin[1] - sphere.position[1])) + (z_dir * (ray_origin[2] - sphere.position[2])));
-  float c= ((ray_origin[0] - sphere.position[0]) * (ray_origin[0] - sphere.position[0])) +
-           ((ray_origin[1] - sphere.position[1]) * (ray_origin[1] - sphere.position[1])) +
-           ((ray_origin[2] - sphere.position[2]) * (ray_origin[2] - sphere.position[2])) -
-           (sphere.radius * sphere.radius);
+  float b = 2 * ((x_dir * (ray_origin[0] - current_sphere.position[0])) + (y_dir * (ray_origin[1] - current_sphere.position[1])) + (z_dir * (ray_origin[2] - current_sphere.position[2])));
+  float c= ((ray_origin[0] - current_sphere.position[0]) * (ray_origin[0] - current_sphere.position[0])) +
+           ((ray_origin[1] - current_sphere.position[1]) * (ray_origin[1] - current_sphere.position[1])) +
+           ((ray_origin[2] - current_sphere.position[2]) * (ray_origin[2] - current_sphere.position[2])) -
+           (current_sphere.radius * current_sphere.radius);
   printf("a: %f    , b: %f     , c: %f  \n", a, b, c);
 
   float discriminant = (b * b) - (4 * a * c);
@@ -166,7 +168,7 @@ float ray_sphere_intersection(int x, int y, Sphere sphere) {
     float t0 = (-b - sqrt(discriminant)) / (2 * a); // nearest intersection point
     float t1 = (-b + sqrt(discriminant)) / (2 * a); // nearest intersection point
     printf("t0: %f\n", t0);
-    if (t0 > 0 && t1 > 0) {
+    if (t0 > 0 && t1 > 0 && discriminant > 0) {
       does_intersect = true;
       return min_val(t0, t1);
     } else {
@@ -180,8 +182,8 @@ float ray_sphere_intersection(int x, int y, Sphere sphere) {
  * given 3 vertices on the plane
  **/
 void plane_normal(Vertex v1, Vertex v2, Vertex v3) {
-  float ray1[3];
-  float ray2[3];
+  float ray1[3] = {0, 0, 0};
+  float ray2[3] = {0, 0, 0};
 
   // v1 - v2
   ray1[0] = v1.position[0] - v2.position[0];
@@ -268,23 +270,20 @@ float get_intersect_coordinates(float min_root) {
  * Compute cross product given two rays
  * in the form of two arrays of size 3
  **/
-float *cross_product(float ray1[3], float ray2[3]) {
-  float cross[3];
-
-  cross[0] = (ray1[1] * ray2[2]) - (ray1[2] * ray2[1]);
-  cross[1] = (ray1[2] * ray2[0]) - (ray1[0] * ray2[2]);
-  cross[2] = (ray1[0] * ray2[1]) - (ray1[1] * ray2[0]);
-
-  return cross;
+void cross_product(double ray1[3], double ray2[3]) {
+  triangle_area_cross_product[0] = (ray1[1] * ray2[2]) - (ray1[2] * ray2[1]);
+  triangle_area_cross_product[1] = (ray1[2] * ray2[0]) - (ray1[0] * ray2[2]);
+  triangle_area_cross_product[2] = (ray1[0] * ray2[1]) - (ray1[1] * ray2[0]);
+  printf("Cross product: (%f, %f, %f)\n", triangle_area_cross_product[0], triangle_area_cross_product[1], triangle_area_cross_product[2]);
 }
 
 /**
  * Compute the area of a triangle in 3D
  * using cross product
  **/
-float triangle_area(double v1[], double v2[], float v3[]) {
-  float ray1[3];
-  float ray2[3];
+float triangle_area(double v1[], double v2[], double v3[]) {
+  double ray1[3];
+  double ray2[3];
 
   // v1 - v3
   ray1[0] = v1[0] - v3[0];
@@ -296,14 +295,10 @@ float triangle_area(double v1[], double v2[], float v3[]) {
   ray2[1] = v2[1] - v3[1];
   ray2[2] = v2[2] - v3[2];
 
-  float *cross_pointer = cross_product(ray1, ray2);
-  float cross[3] = {0, 0, 0};
-  for (int i = 0; i < 3; i++) {
-    cross[i] = *(cross_pointer + i);
-  }
-  printf("Cross product: (%f, %f, %f)\n", cross[0], cross[1], cross[2]);
+  cross_product(ray1, ray2);
+  printf("Cross product: (%f, %f, %f)\n", triangle_area_cross_product[0], triangle_area_cross_product[1], triangle_area_cross_product[2]);
 
-  float mag = magnitide(cross[0], cross[1], cross[2]);
+  float mag = magnitide(triangle_area_cross_product[0], triangle_area_cross_product[1], triangle_area_cross_product[2]);
   printf("MAGNITUDE of Cross product: %f\n", mag);
 
   return 0.5 * mag;
@@ -319,20 +314,14 @@ float two_d_triangle_area(float x1, float y1, float x2, float y2, float x3, floa
  * the triangle 
  **/
 bool is_intersection_inside_triangle(Triangle triangle) {
-  float two_d_triangle[6] = {
-    triangle.v[0].position[0], triangle.v[0].position[1],
-    triangle.v[1].position[0], triangle.v[1].position[1],
-    triangle.v[2].position[0], triangle.v[2].position[1]
-  };
+  float total_area = triangle_area(triangle.v[0].position, triangle.v[1].position, triangle.v[2].position);
 
-  float alpha = two_d_triangle_area(current_intersection_point[0], current_intersection_point[1], two_d_triangle[2], two_d_triangle[3], two_d_triangle[4], two_d_triangle[5]) / 
-                     two_d_triangle_area(two_d_triangle[0], two_d_triangle[1], two_d_triangle[2], two_d_triangle[3], two_d_triangle[4], two_d_triangle[5]);
+  float alpha = triangle_area(current_intersection_point, triangle.v[1].position, triangle.v[2].position) / total_area;
 
-  float beta = two_d_triangle_area(two_d_triangle[0], two_d_triangle[1], current_intersection_point[0], current_intersection_point[1], two_d_triangle[4], two_d_triangle[5]) /  
-                    two_d_triangle_area(two_d_triangle[0], two_d_triangle[1], two_d_triangle[2], two_d_triangle[3], two_d_triangle[4], two_d_triangle[5]);
+  float beta = triangle_area(triangle.v[0].position, current_intersection_point, triangle.v[2].position) / total_area;
 
-  float gamma = two_d_triangle_area(two_d_triangle[0], two_d_triangle[1], two_d_triangle[2], two_d_triangle[3], current_intersection_point[0], current_intersection_point[1]) / 
-                    two_d_triangle_area(two_d_triangle[0], two_d_triangle[1], two_d_triangle[2], two_d_triangle[3], two_d_triangle[4], two_d_triangle[5]);
+  float gamma = triangle_area(triangle.v[0].position, triangle.v[1].position, current_intersection_point) / total_area;
+
   printf("ALPHA: %f, BETA:, %f, GAMMA: %f\n", alpha, beta, gamma);
 
   float sum = alpha + beta + gamma;
@@ -366,7 +355,7 @@ void iterate_over_objects(int x, int y) {
   if (num_spheres != 0) {
     for(int i = 0; i < num_spheres; i++) {
       current_sphere = spheres[i];
-      float min_root = ray_sphere_intersection(x, y, current_sphere);
+      float min_root = ray_sphere_intersection(x, y);
 
       // if ray intersects the sphere at 1 or 2 locations
       if (min_root != -1) {
@@ -550,11 +539,18 @@ bool shadow_ray_intersection() {
       // do not intersect the shadow ray with the current sphere you are on
       // or else you will get all the sphere is in shadow
       printf("Sphere equality: %d\n", sphere_equality(s, current_sphere));
-      if (!(sphere_equality(s, current_sphere))) {
-        isInShadow = shadow_ray_sphere_intersection(s);
-        if (isInShadow) {
-          return true;
+      if (object_type == SPHERE) {
+        if (!(sphere_equality(s, current_sphere))) {
+          isInShadow = shadow_ray_sphere_intersection(s);
+          if (isInShadow) {
+            return true;
+          }
         }
+      } else {
+        isInShadow = shadow_ray_sphere_intersection(s);
+          if (isInShadow) {
+            return true;
+          }
       }
     }
   }
@@ -638,16 +634,16 @@ void phong_illumination(Light current_light) {
  * at the triangle vertices, and then normalize the length
  **/ 
 void normal_at_triangle_intersection() {
-  triangle_intersection_normal[0] = (current_alpha * current_triangle.v[0].normal[0]) + (current_beta * current_triangle.v[1].normal[0] + (current_gamma * current_triangle.v[2].normal[0]));
-  triangle_intersection_normal[1] = (current_alpha * current_triangle.v[0].normal[1]) + (current_beta * current_triangle.v[1].normal[1] + (current_gamma * current_triangle.v[2].normal[1]));
-  triangle_intersection_normal[2] = (current_alpha * current_triangle.v[0].normal[2]) + (current_beta * current_triangle.v[1].normal[2] + (current_gamma * current_triangle.v[2].normal[2]));
+  triangle_intersection_normal[0] = (current_beta * current_triangle.v[0].normal[0]) + (current_alpha * current_triangle.v[1].normal[0] + (current_gamma * current_triangle.v[2].normal[0]));
+  triangle_intersection_normal[1] = (current_beta * current_triangle.v[0].normal[1]) + (current_alpha * current_triangle.v[1].normal[1] + (current_gamma * current_triangle.v[2].normal[1]));
+  triangle_intersection_normal[2] = (current_beta * current_triangle.v[0].normal[2]) + (current_alpha * current_triangle.v[1].normal[2] + (current_gamma * current_triangle.v[2].normal[2]));
   
-  printf("Normal at triangle intersection: %f, %f, %f\n", triangle_intersection_normal[0], triangle_intersection_normal[1], triangle_intersection_normal[2]); 
-
   float mag = magnitide(triangle_intersection_normal[0], triangle_intersection_normal[1], triangle_intersection_normal[2]);
   triangle_intersection_normal[0] = triangle_intersection_normal[0] / mag;
   triangle_intersection_normal[1] = triangle_intersection_normal[1] / mag;
   triangle_intersection_normal[2] = triangle_intersection_normal[2] / mag;
+
+  printf("Normal at triangle intersection: %f, %f, %f\n", triangle_intersection_normal[0], triangle_intersection_normal[1], triangle_intersection_normal[2]); 
 }
 
 void interpolate_diffuse() {
@@ -655,12 +651,12 @@ void interpolate_diffuse() {
   interpolated_diffuse[1] = (current_alpha * current_triangle.v[0].color_diffuse[1]) + (current_beta * current_triangle.v[1].color_diffuse[1] + (current_gamma * current_triangle.v[2].color_diffuse[1]));
   interpolated_diffuse[2] = (current_alpha * current_triangle.v[0].color_diffuse[2]) + (current_beta * current_triangle.v[1].color_diffuse[2] + (current_gamma * current_triangle.v[2].color_diffuse[2]));
 
-  printf("DIFFUSE at triangle intersection: %f, %f, %f\n", interpolated_diffuse[0], interpolated_diffuse[1], interpolated_diffuse[2]); 
-
   float mag = magnitide(interpolated_diffuse[0], interpolated_diffuse[1], interpolated_diffuse[2]);
   interpolated_diffuse[0] = interpolated_diffuse[0] / mag;
   interpolated_diffuse[1] = interpolated_diffuse[1] / mag;
   interpolated_diffuse[2] = interpolated_diffuse[2] / mag;
+
+  printf("DIFFUSE at triangle intersection: %f, %f, %f\n", interpolated_diffuse[0], interpolated_diffuse[1], interpolated_diffuse[2]); 
 }
 
 void interpolate_specular() {
@@ -668,12 +664,12 @@ void interpolate_specular() {
   interpolated_specular[1] = (current_alpha * current_triangle.v[0].color_specular[1]) + (current_beta * current_triangle.v[1].color_specular[1] + (current_gamma * current_triangle.v[2].color_specular[1]));
   interpolated_specular[2] = (current_alpha * current_triangle.v[0].color_specular[2]) + (current_beta * current_triangle.v[1].color_specular[2] + (current_gamma * current_triangle.v[2].color_specular[2]));
 
-  printf("SPECULAR at triangle intersection: %f, %f, %f\n", interpolated_specular[0], interpolated_specular[1], interpolated_specular[2]); 
-
   float mag = magnitide(interpolated_specular[0], interpolated_specular[1], interpolated_specular[2]);
   interpolated_specular[0] = interpolated_specular[0] / mag;
   interpolated_specular[1] = interpolated_specular[1] / mag;
   interpolated_specular[2] = interpolated_specular[2] / mag;
+
+  printf("SPECULAR at triangle intersection: %f, %f, %f\n", interpolated_specular[0], interpolated_specular[1], interpolated_specular[2]); 
 }
 
 void phong_illumination_triangle(Light current_light) {
@@ -805,15 +801,15 @@ void draw_scene()
           fire_shadow_rays();
 
           // 6) use global color value to color the pixel
-          plot_pixel(x, HEIGHT - y, current_color_at_point[0] * 255, current_color_at_point[1] * 255, current_color_at_point[2] * 255);
+          plot_pixel(x, y, current_color_at_point[0] * 255, current_color_at_point[1] * 255, current_color_at_point[2] * 255);
         } 
         else {
           fire_shadow_rays();
           
-          plot_pixel(x, HEIGHT - y, current_color_at_point[0] * 255, current_color_at_point[1] * 255, current_color_at_point[2] * 255);
+          plot_pixel(x, y, current_color_at_point[0] * 255, current_color_at_point[1] * 255, current_color_at_point[2] * 255);
         }
       } else {
-        plot_pixel(x, HEIGHT - y , 255, 255, 255);
+        plot_pixel(x, y , 255, 255, 255);
       }
       // reset the global color variable to all zeros
       // reset the global closest intersection value for the next pixel we will be evaluating
@@ -824,6 +820,10 @@ void draw_scene()
       closest_intersection[0] = 10000;
       closest_intersection[1] = 10000;
       closest_intersection[2] = 10000;
+
+      current_intersection_point[0] = 0;
+      current_intersection_point[1] = 0;
+      current_intersection_point[2] = 0;
 
       does_intersect = false;
     }
@@ -842,9 +842,9 @@ void plot_pixel_display(int x,int y,unsigned char r,unsigned char g,unsigned cha
 
 void plot_pixel_jpeg(int x,int y,unsigned char r,unsigned char g,unsigned char b)
 {
-  buffer[y-1][x][0]=r;
-  buffer[y-1][x][1]=g;
-  buffer[y-1][x][2]=b;
+  buffer[HEIGHT - y-1][x][0]=r;
+  buffer[HEIGHT - y-1][x][1]=g;
+  buffer[HEIGHT - y-1][x][2]=b;
 }
 
 void plot_pixel(int x,int y,unsigned char r,unsigned char g, unsigned char b)
@@ -858,7 +858,7 @@ void save_jpg()
 {
   Pic *in = NULL;
 
-  in = pic_alloc(640, 480, 3, NULL);
+  in = pic_alloc(WIDTH, HEIGHT, 3, NULL);
   printf("Saving JPEG file: %s\n", filename);
 
   memcpy(in->pix,buffer,3*WIDTH*HEIGHT);
