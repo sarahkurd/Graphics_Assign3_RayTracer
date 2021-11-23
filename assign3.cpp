@@ -32,8 +32,8 @@ char *filename=0;
 int mode=MODE_DISPLAY;
 
 //you may want to make these smaller for debugging purposes
-#define WIDTH 320
-#define HEIGHT 240
+#define WIDTH 640
+#define HEIGHT 480
 
 //the field of view of the camera
 #define fov 60.0
@@ -87,7 +87,7 @@ void plot_pixel(int x,int y,unsigned char r,unsigned char g,unsigned char b);
 Sphere current_sphere;
 Triangle current_triangle;
 
-float aspect_ratio = WIDTH/HEIGHT;
+float aspect_ratio = (double)WIDTH/HEIGHT;
 float ray_origin[3] = {0, 0, 0};
 float x_dir = 0;
 float y_dir = 0;
@@ -131,12 +131,12 @@ float magnitide(float x, float y, float z) {
  *  2. Calculate the values for at^2 + bt + c = 0 
  *  3. Return the intersection point
  **/
-float ray_sphere_intersection(int x, int y) {
+float ray_sphere_intersection(int x, int y, Sphere sphere) {
   printf("\npixel(%i, %i)\n", x, y);
 
   // calculate the length of each pixel using the WIDTH and HEIGHT of the window
-  float x_pixel_length = (aspect_ratio * tan(FOV_RADIANS) - (-aspect_ratio * tan(FOV_RADIANS))) / WIDTH;
-  float y_pixel_length = (tan(FOV_RADIANS) - (-tan(FOV_RADIANS))) / HEIGHT;
+  float x_pixel_length = (aspect_ratio * tan(FOV_RADIANS) - (-aspect_ratio * tan(FOV_RADIANS))) / (double)WIDTH;
+  float y_pixel_length = (tan(FOV_RADIANS) - (-tan(FOV_RADIANS))) / (double)HEIGHT;
 
   // calculate direction vector 
   x_dir = (-aspect_ratio * tan(FOV_RADIANS)) + ((x + 0.5) * x_pixel_length);
@@ -152,11 +152,11 @@ float ray_sphere_intersection(int x, int y) {
   printf("xdir: %f    , ydir: %f     , zdir: %f    \n", x_dir, y_dir, z_dir);
 
   float a = (x_dir * x_dir) + (y_dir * y_dir) + (z_dir * z_dir);
-  float b = 2 * ((x_dir * (ray_origin[0] - current_sphere.position[0])) + (y_dir * (ray_origin[1] - current_sphere.position[1])) + (z_dir * (ray_origin[2] - current_sphere.position[2])));
-  float c= ((ray_origin[0] - current_sphere.position[0]) * (ray_origin[0] - current_sphere.position[0])) +
-           ((ray_origin[1] - current_sphere.position[1]) * (ray_origin[1] - current_sphere.position[1])) +
-           ((ray_origin[2] - current_sphere.position[2]) * (ray_origin[2] - current_sphere.position[2])) -
-           (current_sphere.radius * current_sphere.radius);
+  float b = 2 * ((x_dir * (ray_origin[0] - sphere.position[0])) + (y_dir * (ray_origin[1] - sphere.position[1])) + (z_dir * (ray_origin[2] - sphere.position[2])));
+  float c= ((ray_origin[0] - sphere.position[0]) * (ray_origin[0] - sphere.position[0])) +
+           ((ray_origin[1] - sphere.position[1]) * (ray_origin[1] - sphere.position[1])) +
+           ((ray_origin[2] - sphere.position[2]) * (ray_origin[2] - sphere.position[2])) -
+           (sphere.radius * sphere.radius);
   printf("a: %f    , b: %f     , c: %f  \n", a, b, c);
 
   float discriminant = (b * b) - (4 * a * c);
@@ -354,8 +354,8 @@ void iterate_over_objects(int x, int y) {
   float closest_distance = distance_to_cop(closest_intersection[0], closest_intersection[1], closest_intersection[2]);
   if (num_spheres != 0) {
     for(int i = 0; i < num_spheres; i++) {
-      current_sphere = spheres[i];
-      float min_root = ray_sphere_intersection(x, y);
+      Sphere sphere = spheres[i];
+      float min_root = ray_sphere_intersection(x, y, sphere);
 
       // if ray intersects the sphere at 1 or 2 locations
       if (min_root != -1) {
@@ -370,6 +370,7 @@ void iterate_over_objects(int x, int y) {
           closest_intersection[1] = current_intersection_point[1];
           closest_intersection[2] = current_intersection_point[2];
           object_type = SPHERE;
+          current_sphere = sphere;
         }
       }
     }
@@ -377,15 +378,15 @@ void iterate_over_objects(int x, int y) {
 
   if (num_triangles != 0) {
     for(int i = 0; i < num_triangles; i++) {
-      current_triangle = triangles[i];
-      float intersection = ray_plane_intersection(x, y, current_triangle);
+      Triangle t = triangles[i];
+      float intersection = ray_plane_intersection(x, y, t);
 
       if (intersection != -1) {
         get_intersect_coordinates(intersection);
 
         // use barycentric coordinates to determine if
         // current intersection is inside triangle
-        bool isInTriangle = is_intersection_inside_triangle(current_triangle);
+        bool isInTriangle = is_intersection_inside_triangle(t);
 
         if (isInTriangle) {
           does_intersect = true;
@@ -398,6 +399,7 @@ void iterate_over_objects(int x, int y) {
             closest_intersection[1] = current_intersection_point[1];
             closest_intersection[2] = current_intersection_point[2];
             object_type = TRIANGLE;
+            current_triangle = t;
           }
         }
       }
